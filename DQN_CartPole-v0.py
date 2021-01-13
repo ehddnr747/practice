@@ -11,13 +11,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
+
 import sys, os
 from IPython.display import clear_output
 from typing import List
 
+## Very Clean and readable ##
 class Network(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int):
         super(Network, self).__init__()
@@ -34,7 +37,8 @@ class Network(nn.Module):
         x = self.fc3(x)
 
         return x
-
+## Very Clean and readable ##
+    
 class ReplayBuffer:
     def __init__(self, size: int, batch_size: int):
         self.size = 0
@@ -45,7 +49,7 @@ class ReplayBuffer:
         self.sample_index = []
         self.train_batch = []
         self.ptr = 0
-        
+        # 뭔가 불필요한 변수들이 많아보이는데 밑에 코드 함 보고 말씀드림.
 
     def store(self, 
               prev_obs: List[float],
@@ -55,15 +59,23 @@ class ReplayBuffer:
               done: bool,
               ):
         self.transition = [prev_obs, action, reward, obs, done]
+        # 이게 꼭 self.transition에 저장될 필요가 있을까? 그냥 local variable
+        # transition = [prev_obs, action, reward, obs, done] 하고 이후에 사용하는 것은 어려울까?
         self.replay.insert(self.ptr, self.transition)
+        # insert는 append랑 다르지 않는데, n번째 index의 내용을 바꾸고 싶다면 뭔가 잘못된걸 쓰는 것 아닐까?
+        # insert는 l = [1,2,3,4] 일때
+        # l.insert(3, 5) 하면 l == [1,2,3,5,4] 가되는데. [1,2,3,5]가 아니라..
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
-
-
+        
+    # Looks good to me
     def sample_batch(self) -> List[int]:
         self.sample_index = np.random.randint(low=0, high=self.size, size=self.batch_size)
+        # np.random.randint는 반열린구간에서 sample한다는 것 잘 찾아봤네 Good Good!
         self.train_batch = [self.replay[idx] for idx in self.sample_index]
         return self.train_batch
+        # 이 함수에서 self.sample_index 랑 self.train_batch 같은거는 그냥 local variable 쓰는게 더 좋지 않을까?
+    # Looks good to me
 
 class Agent:
     def __init__(self, 
@@ -71,9 +83,9 @@ class Agent:
                  memory_size: int,
                  batch_size: int,
                  target_update: int,
-                 epsilon_decay: float,
-                 max_epsilon: float,
-                 min_epsilon: float,
+                 epsilon_decay: float, # baseline 짜는데 굳이 epsilon decay를 추가해서 복잡하게 만들 필요는 없을듯. 네 자유긴한데. 너는 baseline도 잘 안짜지자나
+                 max_epsilon: float, #
+                 min_epsilon: float, #
                  gamma: float):
         self.env = env
         self.batch_size = batch_size
@@ -86,7 +98,7 @@ class Agent:
         self.gamma = gamma
 
         self.obs_dim = env.observation_space.shape[0]
-        self.act_dim = env.action_space.n
+        self.act_dim = env.action_space.n # 왜 위와는 다른 변수를 쓰는거지? Discrete Action Space는 API가 다르나? 이렇게 코드가 Consistency를 잃는 건 좋지는 않음
 
         self.dqn = Network(obs_dim, act_dim)
         self.dqn_target = Network(obs_dim, act_dim)
@@ -95,6 +107,23 @@ class Agent:
 
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # colab은 NVIDA cuda 없어도 걍 GPU 자동으로 돌아가니까 이 코드 필요 없나?
+        # 뭔 개소리야.. 저거 안해주면 GPU 안쓸걸 야 너 이건 나랑 이야기 한번해. 코드 보면서도 device 안쓰길래 뭔소린가 했는데. 함봐야할듯.
+        # 온 동네에 .to(device)가 붙어야함... 아니면 나중에 메인에서 해당 device로 네트워크 째로 보내주거나. 내 코드 보셈 밑에.
+        # 내코드도 .to를 다빼내고 리팩터링을해서 한곳에서만 to를 부르게 하면 좋겠긴 하네.
+        #    class SacCritic(nn.Module):
+        #        def __init__(self):
+#                     super(SacCritic, self).__init__()
+#                     self.fc1 = nn.Linear(state_dim + action_dim, hidden_dim).to(device)
+#                     self.fc2 = nn.Linear(hidden_dim, hidden_dim).to(device)
+#                     self.fc3 = nn.Linear(hidden_dim, 1).to(device)
+
+#                 def forward(self, s, a):
+#                     x = torch.cat([s, a], dim=-1)
+#                     x = F.relu(self.fc1(x))
+#                     x = F.relu(self.fc2(x))
+#                     x = self.fc3(x)
+
+#                     return x
 
     def train(self, num_episodes: int):
         
@@ -111,12 +140,14 @@ class Agent:
                 else:
                     a = self.dqn.forward(torch.FloatTensor(s)).argmax()
                     a = a.detach().cpu().numpy()    ## a가 tensor 객체라서 detach().cpu().numpy()쓰는 건 알겠는데, 그냥 a.numpy() 쓰면 안 되는건가?
+                    # detach는 반드시 써야함. detach는 이해하고 오셈. 애초에 detach 안쓰면 numpy가 안불릴걸. 너는 이제껏 그냥 cpu만 써와서... cpu()는 있으나 마나함.
 
                 next_s, r, d, _ = self.env.step(a)
                 self.memory.store(s, a, r, next_s, d)
                 s = next_s
 
-                if len(self.memory) >= self.batch_size:
+                if len(self.memory) >= self.batch_size: #self.memory 이거 len() 연산자 오버로딩 했음? 안했으면 이거 백빵 이상하게 동작하고 있을거임. 이렇게 하지말고 차라리
+                    # self.memory.size 이런식으로 하는게 낫지... 이거 확인해봐.
                     loss = self.update_model()
                     update_cnt += 1
 
@@ -140,18 +171,361 @@ class Agent:
 
 
     def compute_loss(self, train_batch):
+        ## 차원 맞춰주는 것 좋아 뭣하면 assert 도 넣어, 난 코드짤때는 assert 넣고 이거 정상 작동한다고 생각되면 그때 뺌.
         s = torch.FloatTensor(np.array([i[0] for i in train_batch]))
         a = torch.LongTensor(np.array([i[1] for i in train_batch])).view([-1, 1])
         r = torch.FloatTensor(np.array([i[2] for i in train_batch])).view([-1, 1])
         next_s = torch.FloatTensor(np.array([i[4] for i in train_batch]))
         d = torch.BoolTensor(np.array([i[3] for i in train_batch])).view([-1, 1])
+        ## 차원 맞춰주는 것 좋아 뭣하면 assert 도 넣어, 난 코드짤때는 assert 넣고 이거 정상 작동한다고 생각되면 그때 뺌.
+        assert len(s.shape) == 2 and len(a.shape) == 2 and len(r.shape) == 2 and len(next_s.shape) == 2 and len(d.shape) == 2
         
         curr_value = self.dqn(s).gather(1, a)
-        next_value = self.dqn_target(next_s).max(dim=1, keepdim=True)[0].detach()
-
-        mask = 1 - done
-        target = (r + self.gamma * next_value * mask)
+        ## 여기에 torch.no_grad(): 가 들어가야함.
+        with torch.no_grad():
+            next_value = self.dqn_target(next_s).max(dim=1, keepdim=True)[0].detach()
+            
+            mask = 1 - done
+            target = (r + self.gamma * next_value * mask)
+        ## 짜다가 말았노? 리턴이 어디갔노. 그런데 전반적으로 코드가 클린해졌네..
+        ## 단순히 이게 베끼고 짠게 아니라, 그냥 너가 이해하고 참고하면서 짠 코드라면 분명한 발전이라고 생각함.
+        ## 이짓거리 한 한달정도만 하면 나 수준으로 코드를 짤 수는 있겠는데?
+        
+        
+## 메인 함수가 없네.
+# 나같은 경우는 메인함수를 먼저 짜놓고 그것에 맞춰서 세부 method들을 구현하는게 좋을 것 같아서 그렇게 함.
+# method부터 먼저 구현해놓고 막 하려다 보면 서로 코드가 아다리가 잘 안맞는 경우가 있으니까.
+# UML, Sequential Diagram을 그리는 것 대신 main을 짠다고 생각하고 해봐
+# 위처럼 모두 다 짜놓고 짜다보면, 어디서 잘못됬는지 디버깅하기 너무 어려워짐.
+if __name__ == "__main__":
+    pass #Something main
 
         loss = F.smooth_l2_loss(curr_value, target)
 
         return loss
+    
+    
+# 아래는 내가 짠 코드 그냥 난 이런 스타일로 짬, 코드 
+
+import gym
+import pybulletgym
+
+import numpy as np
+import os
+import duju_util
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import torch.nn.utils as torch_utils
+from torch.distributions.normal import Normal
+
+path_join = os.path.join
+# torch.autograd.set_detect_anomaly(True)
+
+# directory setup
+exp_title = 'sac_baseline_pybullet_reacher0.05_mujoco'
+exp_directory = path_join("/home/donguk/SandBox/carp/data/", exp_title)
+# os.mkdir(exp_directory)
+video_directory = path_join(exp_directory, "videos")
+torch_directory = path_join(exp_directory, "torches")
+# os.mkdir(video_directory)
+# os.mkdir(torch_directory)
+
+gamma = 0.99
+episode = 50000000
+device = torch.device("cuda:0")
+batch_size = 256
+tau = 0.995
+lr = 1e-4
+alpha_lr = 1e-5
+weight_decay = 1e-8
+alpha_noise_prob = 1 / 10000
+replay_size = int(1e6)
+
+env = gym.make("HopperPyBulletEnv-v0")
+
+# only for 1d input
+state_dim = env.observation_space.shape[0]
+action_dim = env.action_space.shape[0]
+hidden_dim = 256
+target_entropy = -action_dim
+
+print(exp_title)
+print("state dim :", state_dim, ", action dim : ", action_dim)
+
+
+class SacCritic(nn.Module):
+    def __init__(self):
+        super(SacCritic, self).__init__()
+        self.fc1 = nn.Linear(state_dim + action_dim, hidden_dim).to(device)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim).to(device)
+        self.fc3 = nn.Linear(hidden_dim, 1).to(device)
+
+    def forward(self, s, a):
+        x = torch.cat([s, a], dim=-1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+
+        return x
+
+
+class SacActor(nn.Module):
+    def __init__(self):
+        super(SacActor, self).__init__()
+        self.fc1 = nn.Linear(state_dim, hidden_dim).to(device)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim).to(device)
+        self.mu = nn.Linear(hidden_dim, action_dim, bias=False).to(device)
+        self.log_std = nn.Linear(hidden_dim, action_dim, bias=False).to(device)
+
+    def forward(self, s):
+        x = F.relu(self.fc1(s))
+        x = F.relu(self.fc2(x))
+        mu = self.mu(x)
+        log_std = torch.clamp(self.log_std(x), -20, 2)
+        std = torch.exp(log_std)
+
+        return mu, std
+
+    def deterministic_sample(self, x):
+
+        mu, std = self.forward(x)
+
+        return torch.tanh(mu)
+
+    def stochastic_sample(self, x, return_log_prob=False):
+
+        mu, std = self.forward(x)
+
+        normal_dist = Normal(mu, std)
+
+        actions = normal_dist.rsample()
+
+        if return_log_prob:
+            log_probs = normal_dist.log_prob(actions)
+            log_normal_probs = log_probs.detach().cpu()
+            log_probs -= 2 * (np.log(2) - actions - F.softplus(-2 * actions))
+
+            return torch.tanh(actions), torch.sum(log_probs, dim=-1, keepdim=True), \
+                   torch.sum(log_normal_probs, dim=-1, keepdim=True)
+        else:
+            return torch.tanh(actions)
+
+
+def alpha_noise(log_alpha):
+    if np.random.rand() < alpha_noise_prob:
+        with torch.no_grad():
+            log_alpha += 0.1 * np.random.randn()
+
+
+mseloss = nn.MSELoss()
+
+
+def sac_train(q1, q2, qt1, qt2, pi, log_alpha, opt_critic, opt_actor, opt_alpha, r_buffer):
+    s_t, a_t, r_tn, s_tn, d_tn = r_buffer.sample_batch(batch_size)
+    alpha = torch.exp(log_alpha)
+
+    with torch.no_grad():
+        s_t = torch.FloatTensor(s_t).to(device)
+        a_t = torch.FloatTensor(a_t).to(device)
+        r_tn = torch.FloatTensor(r_tn).to(device)
+        s_tn = torch.FloatTensor(s_tn).to(device)
+        d_tn = torch.FloatTensor(d_tn).to(device)
+
+        a_tn_critic, log_prob_tn_critic, _ = pi.stochastic_sample(s_tn, return_log_prob=True)
+
+        qt_min_critic = torch.minimum(qt1(s_tn, a_tn_critic), qt2(s_tn, a_tn_critic))
+
+        y = r_tn + gamma * (1 - d_tn) * (qt_min_critic - alpha * log_prob_tn_critic)
+
+    qv_1_critic = q1(s_t, a_t)
+    qv_2_critic = q2(s_t, a_t)
+
+    loss_critic = mseloss(qv_1_critic, y) + mseloss(qv_2_critic, y)
+
+    opt_critic.zero_grad()
+    loss_critic.backward()
+    torch_utils.clip_grad_value_(q1.parameters(), 1.0)
+    torch_utils.clip_grad_value_(q2.parameters(), 1.0)
+    opt_critic.step()
+
+    a_t_actor, log_prob_actor, log_normal_prob = pi.stochastic_sample(s_t, return_log_prob=True)
+
+    qv_1_actor = q1(s_t, a_t_actor)
+    qv_2_actor = q2(s_t, a_t_actor)
+
+    loss_actor = torch.mean(-torch.minimum(qv_1_actor, qv_2_actor) + alpha * log_prob_actor)
+
+    opt_actor.zero_grad()
+    loss_actor.backward()
+    torch_utils.clip_grad_value_(pi.parameters(), 1.0)
+    opt_actor.step()
+
+    loss_alpha = torch.mean(-log_alpha * (log_prob_actor + target_entropy).detach())
+
+    opt_alpha.zero_grad()
+    loss_alpha.backward()
+    opt_alpha.step()
+
+    alpha_noise(log_alpha)
+
+    duju_util.update_target(q1, qt1, tau)
+    duju_util.update_target(q2, qt2, tau)
+
+    return loss_critic.detach().cpu().numpy(), torch.mean(-log_prob_actor).detach().cpu().numpy(), \
+           torch.mean(-log_normal_prob).numpy(), torch.exp(log_alpha).detach().cpu().numpy(), \
+           np.mean(qv_1_critic.detach().cpu().numpy()), np.max(qv_1_critic.detach().cpu().numpy())
+
+
+def eval_gym(_env, pi, exploration=False, render_length=2000, video_save: int = None, cv2_render=False):
+    _acc_reward = 0
+
+    if exploration:
+        policy = lambda x: pi.stochastic_sample(torch.FloatTensor(x).to(device)).cpu().numpy()
+    else:
+        policy = lambda x: pi.deterministic_sample(torch.FloatTensor(x).to(device)).cpu().numpy()
+
+    _obs = _env.reset()
+
+    with torch.no_grad():
+        _action = policy(_obs)
+
+        if video_save is not None:
+            video_path = path_join(video_directory, str(video_save) + ".avi")
+            video_saver = duju_util.VideoSaver(video_path, fps=100, width=600, height=400)
+        else:
+            video_saver = None
+
+        render_step = 0
+        while render_step < render_length:
+            duju_util.render_gym(_env, 600, 400, _text=str(video_save) + "_" + str(render_step), _action=_action,
+                                 _video_save=video_saver, cv2_render=cv2_render)
+
+            _obs, _reward, _done, _ = _env.step(_action)
+            _action = policy(_obs)
+
+            _acc_reward += _reward
+            render_step += 1
+
+            if _done:
+                break
+
+    if video_save is not None:
+        video_saver.release()
+
+    return _acc_reward
+
+
+if __name__ == "__main__":
+
+    sac_q1 = SacCritic()
+    sac_q2 = SacCritic()
+
+    sac_qt1 = SacCritic()
+    sac_qt2 = SacCritic()
+
+    duju_util.target_initialize(sac_q1, sac_qt1)
+    duju_util.target_initialize(sac_q2, sac_qt2)
+
+    sac_pi = SacActor()
+
+    sac_log_alpha = torch.zeros(1, dtype=torch.float32, device=device, requires_grad=True)
+
+    replay_buffer = duju_util.Replay(state_dim, action_dim, replay_size)
+
+    optimizer_critic = optim.Adam(list(sac_q1.parameters()) + list(sac_q2.parameters()), lr=lr,
+                                  weight_decay=weight_decay)
+    optimizer_actor = optim.Adam(sac_pi.parameters(), lr=lr, weight_decay=weight_decay)
+    optimizer_alpha = optim.SGD([sac_log_alpha], lr=alpha_lr)
+
+    print("")
+    print("The Number Of Critic Parameters :", sum([parameter.numel() for parameter in sac_q1.parameters()]))
+    print("The Number Of Actor Parameters :", sum([parameter.numel() for parameter in sac_pi.parameters()]))
+    print("")
+    print("E: Episode, S: Step, TR: Train Reward, ER: Eval Reward, CL: Critic Loss")
+    print("TE: Tanh Entropy, NE: Normal Entropy, A: Alpha, qm: Q Mean, QM: Q MAX")
+    print("")
+
+    episodic_rewards = []
+    alphas = []
+    epi = 0
+    eval_acc_reward = 0
+    update_steps = 0
+
+    train_start_epi = 1
+    random_action_epi = 5
+
+    env.render()  # only for pybullet-gym. this environment has different rendering API compared to Gym.
+
+    while epi < episode:
+        # if epi == -1:
+        #     eval_acc_reward = eval_gym(env, sac_pi, video_save=epi, cv2_render=False)
+        #     torch.save(sac_q1.state_dict(), path_join(torch_directory, str(epi) + ".sac_q1"))
+        #     torch.save(sac_q2.state_dict(), path_join(torch_directory, str(epi) + ".sac_q2"))
+        #     torch.save(sac_qt1.state_dict(), path_join(torch_directory, str(epi) + ".sac_qt1"))
+        #     torch.save(sac_qt2.state_dict(), path_join(torch_directory, str(epi) + ".sac_qt2"))
+        #     torch.save(sac_pi.state_dict(), path_join(torch_directory, str(epi) + ".sac_pi"))
+
+        acc_reward = 0
+        steps = 0
+        loss_Q = []
+        tanh_entropy = []
+        normal_entropy = []
+        alpha_epi = []
+        q_mean = []
+        q_max = []
+
+        obs = env.reset()
+        if epi >= random_action_epi:
+            with torch.no_grad():
+                action = sac_pi.stochastic_sample(torch.FloatTensor(obs).to(device)).cpu().numpy()
+        else:
+            action = np.random.uniform(size=env.action_space.shape)
+
+        replay_buffer.insert(obs, action, 0, 0)
+
+        while True:
+            obs, reward, done, _ = env.step(action)
+
+            if epi >= random_action_epi:
+                with torch.no_grad():
+                    action = sac_pi.stochastic_sample(torch.FloatTensor(obs).to(device)).cpu().numpy()
+            else:
+                action = np.random.uniform(size=env.action_space.shape)
+            replay_buffer.insert(obs, action, reward, done)
+            acc_reward += reward
+
+            if epi >= train_start_epi:
+                loss_Q_, tanh_entropy_, normal_entropy_, alpha_, q_mean_, q_max_ = \
+                    sac_train(sac_q1, sac_q2, sac_qt1, sac_qt2, sac_pi, sac_log_alpha,
+                              optimizer_critic, optimizer_actor, optimizer_alpha, replay_buffer)
+                update_steps += 1
+
+                loss_Q.append(loss_Q_)
+                tanh_entropy.append(tanh_entropy_)
+                normal_entropy.append(normal_entropy_)
+                alpha_epi.append(alpha_)
+                alphas.append(np.mean(alpha_epi))
+                q_mean.append(q_mean_)
+                q_max.append(q_max_)
+
+            if done:
+                episodic_rewards.append(acc_reward)
+                break
+            steps += 1
+
+        # if epi >= train_start_epi:  # "* Eval Reward:","%.2f" % eval_acc_reward,
+        if epi % 25 == 0 and epi > 0:
+            print(
+                "E: %-5d" % epi, "S: %-7d" % update_steps,
+                "* TR:", "%5d" % episodic_rewards[epi], ", ER:", "%5d" % eval_acc_reward,
+                ", CL:", "%5.2f" % np.mean(loss_Q), ", TE:", "%5.2f" % np.mean(tanh_entropy),
+                ", NE:", "%5.2f" % np.mean(normal_entropy), ", A:", "%3.2f" % np.mean(alpha_epi),
+                ", qm:", "%5.2f" % np.mean(q_mean), ", QM:", "%5.2f" % np.mean(q_max)
+            )
+        # else:
+        #     print("E: %-5d" % epi, "S: %-7d" % update_steps, "* TR:", "%5d" % episodic_rewards[epi],
+        #     ", ER:", "%5d" % eval_acc_reward)
+        epi += 1
